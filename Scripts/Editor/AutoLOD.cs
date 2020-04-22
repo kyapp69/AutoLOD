@@ -152,7 +152,7 @@ namespace Unity.AutoLOD
         {
             get
             {
-                if (s_MeshSimplifiers == null)
+                if (s_MeshSimplifiers == null || s_MeshSimplifiers.Count == 0)
                     s_MeshSimplifiers = ObjectUtils.GetImplementationsOfInterface(typeof(IMeshSimplifier)).ToList();
 
                 return s_MeshSimplifiers;
@@ -163,7 +163,7 @@ namespace Unity.AutoLOD
         {
             get
             {
-                if (s_Batchers == null)
+                if (s_Batchers == null || s_Batchers.Count == 0)
                     s_Batchers = ObjectUtils.GetImplementationsOfInterface(typeof(IBatcher)).ToList();
 
                 return s_Batchers;
@@ -173,6 +173,7 @@ namespace Unity.AutoLOD
         static SceneLOD s_SceneLOD;
         static List<Type> s_MeshSimplifiers;
         static List<Type> s_Batchers;
+        static IPreferences s_SimplifierPreferences;
 
         static void UpdateDependencies()
         {
@@ -204,11 +205,10 @@ namespace Unity.AutoLOD
             if (sceneLODEnabled && !SceneLOD.activated)
             {
                 if (!SceneLOD.instance)
-                    Debug.Log("SceneLOD failed to start");
+                    Debug.LogError("SceneLOD failed to start");
             }
             else if (!sceneLODEnabled && SceneLOD.activated)
             {
-                Debug.Log("Destroying SceneLOD instance");
                 UnityObject.DestroyImmediate(SceneLOD.instance);
             }
 #else
@@ -527,6 +527,7 @@ namespace Unity.AutoLOD
                         EditorUtility.CopySerialized(mf.GetComponent<MeshRenderer>(), lodRenderer);
 
                         var simplifiedMesh = new Mesh();
+                        simplifiedMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
                         simplifiedMesh.name = sharedMesh.name + string.Format(" LOD{0}", l);
                         lodMF.sharedMesh = simplifiedMesh;
                         meshes.Add(simplifiedMesh);
@@ -642,7 +643,6 @@ namespace Unity.AutoLOD
                     var maxTime = EditorGUILayout.IntSlider(label, maxExecutionTime, 0, 15);
                     if (EditorGUI.EndChangeCheck())
                         maxExecutionTime = maxTime;
-
                 }
             }
 
@@ -661,6 +661,19 @@ namespace Unity.AutoLOD
                     var selected = EditorGUILayout.Popup(label, Array.IndexOf(displayedOptions, type.Name), displayedOptions);
                     if (EditorGUI.EndChangeCheck())
                         meshSimplifierType = meshSimplifiers[selected];
+
+                    if (meshSimplifierType != null && typeof(IMeshSimplifier).IsAssignableFrom(meshSimplifierType))
+                    {
+                        if (s_SimplifierPreferences == null || s_SimplifierPreferences.GetType() != meshSimplifierType)
+                            s_SimplifierPreferences = (IPreferences)Activator.CreateInstance(meshSimplifierType);
+
+                        if (s_SimplifierPreferences != null)
+                        {
+                            EditorGUI.indentLevel++;
+                            s_SimplifierPreferences.OnPreferencesGUI();
+                            EditorGUI.indentLevel--;
+                        }
+                    }
                 }
                 else
                 {
@@ -678,11 +691,11 @@ namespace Unity.AutoLOD
                         + "different approaches can be compared. The default batcher is used in HLOD generation when "
                         + "combining objects that are located within the same LODVolume.");
 
-                    var displayedOptions = s_Batchers.Select(t => t.Name).ToArray();
+                    var displayedOptions = batchers.Select(t => t.Name).ToArray();
                     EditorGUI.BeginChangeCheck();
                     var selected = EditorGUILayout.Popup(label, Array.IndexOf(displayedOptions, type.Name), displayedOptions);
                     if (EditorGUI.EndChangeCheck())
-                        batcherType = s_Batchers[selected];
+                        batcherType = batchers[selected];
                 }
                 else
                 {
